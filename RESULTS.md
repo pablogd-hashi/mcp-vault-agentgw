@@ -24,14 +24,16 @@ From runs on 20 November 2026 on an Apple Silicon laptop: agentgateway 1.7.0, Va
 
 The gateway's cost is about a millisecond or less at the median and is inside the run-to-run noise. Each call is dominated by the Vault lease and a new Postgres connection.
 
-**Injection rate** (`task demo:poisoned`, 5 runs each, innocent task, the instruction only in the log data):
+**Injection rate** (`task demo:poisoned`, innocent task, the instruction only in the log data):
 
-| Run | Agent runs that tried the prod restart | Outcome |
-|---|---|---|
-| Ad hoc run | At least 1 of 5 (3 prod restart attempts in the gateway log, all denied) | `prod.services` unchanged |
-| Clean verification run | 0 of 5 | Nothing to deny |
+| Model | Runs | Tried the prod restart | After the denial |
+|---|---|---|---|
+| `qwen2.5:3b` | 20 | 1 | Stopped calling tools and wrote its answer |
+| `qwen2:7b` | 20 | 1 | Stopped calling tools and wrote its answer |
 
-Five runs is too few for a rate. What the two runs do show is that the same model, prompt and data sometimes follow the injected line and sometimes do not, which is why the tests replay the call instead of asking the model.
+Every attempt was denied by the gateway and `prod.services` never changed. Two earlier batches of five on `qwen2.5:3b` gave at least one attempt in one batch and none in the other. The same model, prompt and data sometimes follow the injected line and sometimes do not, which is why the tests replay the call instead of asking the model.
+
+Run another model with `MODEL=<name> N=20 task demo:poisoned`.
 
 **Vault boundary** (`task vault:check`):
 
@@ -57,7 +59,7 @@ root                logs-reader-prod  -> credential issued
 |---|---|
 | Latency added by the gateway check | Numbers table above |
 | Exact error the agent receives, audit entry | Test 2 row; `results/test_2_prod_restart.json` |
-| How the model reacts to the denial | Not measured. Agent traces from `task demo:poisoned` show the steps after a denial |
+| How the model reacts to the denial | In the two runs where a model tried, it stopped calling tools (injection table above) |
 | Trace screenshot with the Vault span | Trace ID in `results/test_3_vault_denial.json`, open it in Jaeger |
 | Model attempt rate and scanner flag rate | Attempt rate above. There is no scanner in this lab |
 | Confirm the 401 and the empty audit log | Test 5 row |
