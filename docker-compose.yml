@@ -1,0 +1,109 @@
+# Three networks, so "the agent cannot reach the MCP server" is a fact about the
+# lab and not a promise:
+#   agent-net     agent <-> gateway
+#   backend-net   gateway <-> mcp-server <-> vault, postgres
+#   telemetry-net collector <-> jaeger
+# The collector is the only service on all three. A shared telemetry network
+# that both the agent and the MCP server joined would be a way around the
+# gateway (the first version of this file had exactly that; test 5 caught it).
+# Only Vault (for Terraform), the gateway and the Jaeger UI are published, on 127.0.0.1.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lab
+      POSTGRES_PASSWORD: ${POSTGRES_ROOT_PASSWORD}
+    volumes:
+      - ./seed/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lab"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [backend-net]
+
+  vault:
+    image: hashicorp/vault:1.20
+    command: ["server", "-dev", "-dev-listen-address=0.0.0.0:8200"]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN}
+    cap_add: [IPC_LOCK]
+    ports:
+      - "127.0.0.1:8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [backend-net]
+
+  mcp-server:
+    build: ./mcp-server
+    environment:
+      UPSTREAM_KEY: ${UPSTREAM_KEY}
+      VAULT_ADDR: http://vault:8200
+      APPROLE_DIR: /run/lab
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    volumes:
+      - ./.lab:/run/lab:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      vault: {condition: service_healthy}
+    networks: [backend-net]
+
+  agentgateway:
+    image: cr.agentgateway.dev/agentgateway:v1.7.0
+    command: ["-f", "/config.yaml"]
+    environment:
+      AGENT_KEY: ${AGENT_KEY}
+      UPSTREAM_KEY: ${UPSTREAM_KEY}
+      SESSION_KEY: ${SESSION_KEY}
+    volumes:
+      - ./gateway/config.yaml:/config.yaml:ro
+    ports:
+      - "127.0.0.1:13000:3000"
+    depends_on: [mcp-server, otel-collector]
+    networks: [agent-net, backend-net]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.1
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    depends_on: [jaeger]
+    networks: [agent-net, backend-net, telemetry-net]
+
+  jaeger:
+    image: jaegertracing/jaeger:2.1.0
+    ports:
+      - "127.0.0.1:16686:16686"
+    networks: [telemetry-net]
+
+  # Run on demand: `docker compose run --rm agent ...`. It sits on agent-net
+  # only, so the MCP server is neither resolvable nor routable from here.
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    profiles: [agent]
+    environment:
+      GATEWAY_URL: http://agentgateway:3000/mcp
+      AGENT_KEY: ${AGENT_KEY}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [agent-net]
+
+  # Test 5 only: a client that IS on the backend network but has no upstream key.
+  probe:
+    image: curlimages/curl:8.11.1
+    profiles: [probe]
+    networks: [backend-net]
+
+networks:
+  agent-net:
+  backend-net:
+  telemetry-net:

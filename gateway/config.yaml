@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+#
+# The whole gateway policy for the lab. Three things happen here:
+#   1. the caller must present the agent key (who is calling),
+#   2. each tool call is checked against the rules below (what it may do),
+#   3. the upstream key is added on the way to the MCP server (the agent never sees it).
+
+config:
+  logging:
+    format: json
+
+frontendPolicies:
+  tracing:
+    host: otel-collector:4317
+    protocol: grpc
+    randomSampling: true
+  accessLog:
+    add:
+      tool_args: 'mcp.tool.arguments'
+      tool_error: 'mcp.tool.error'
+      caller: 'apiKey.user'
+
+mcp:
+  port: 3000
+  policies:
+    apiKey:
+      mode: strict
+      keys:
+      - key: $AGENT_KEY
+        metadata:
+          user: lab-agent
+
+    # Which tools exist for this caller. read_logs is allowed for every
+    # environment on purpose: a gateway rule that is too broad is the mistake
+    # test 3 relies on.
+    mcpAuthorization:
+      rules:
+      - 'mcp.tool.name == "read_logs"'
+      - 'mcp.tool.name == "restart_service"'
+
+    # Rules on tool ARGUMENTS. mcpAuthorization cannot see arguments, so the
+    # prod restart rule is a request-phase guardrail.
+    mcpGuardrails:
+      processors:
+      - kind: expression
+        methods:
+          tools/call: request
+        condition: >-
+          mcp.params.name == 'restart_service' &&
+          has(mcp.params.arguments) &&
+          has(mcp.params.arguments.env) &&
+          mcp.params.arguments.env == 'prod'
+        reject: "Denied by gateway policy: restart_service is not allowed with env=prod"
+
+    backendAuth:
+      key:
+        value: $UPSTREAM_KEY
+        location:
+          header:
+            name: x-api-key
+            prefix: ""
+
+  targets:
+  - name: ops
+    mcp:
+      host: http://mcp-server:8000/mcp

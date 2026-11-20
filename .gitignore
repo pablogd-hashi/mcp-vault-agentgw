@@ -1,0 +1,10 @@
+.env
+.lab/
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+results/
+terraform/vault/.terraform/
+terraform/vault/terraform.tfstate*
+terraform/vault/.terraform.tfstate.lock.info

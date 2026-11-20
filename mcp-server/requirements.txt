@@ -1,0 +1,8 @@
+# The MCP SDK is held on 1.x: 2.x was released after this lab was designed and
+# has not been tried here.
+mcp==1.30.0
+hvac==2.4.0
+psycopg[binary]==3.3.9
+uvicorn==0.54.0
+opentelemetry-sdk==1.45.2
+opentelemetry-exporter-otlp-proto-grpc==1.45.2
