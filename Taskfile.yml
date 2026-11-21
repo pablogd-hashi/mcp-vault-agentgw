@@ -11,6 +11,17 @@ tasks:
     cmds: [task --list]
     silent: true
 
+  all:
+    desc: "Everything end to end: setup, start, configure Vault, run the six tests, then show the evidence."
+    cmds:
+      - task: setup
+      - task: up
+      - task: vault:configure
+      - task: test
+      - task: vault:check
+      - task: bench
+      - task: audit
+
   setup:
     desc: Create .env with random lab secrets and the Python venv for tests.
     cmds:
@@ -24,6 +35,7 @@ tasks:
       - mkdir -p .lab
       - docker compose up -d --build --wait postgres vault
       - docker compose up -d --build
+      - sh scripts/wait-ready.sh
 
   vault:configure:
     desc: Configure Vault with Terraform (database engine, roles, AppRole) and hand the AppRole to the MCP server.

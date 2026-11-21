@@ -17,6 +17,14 @@ It was designed around Runlayer and built with agentgateway instead, because age
 
 ## Run it
 
+One command does everything below, from an empty checkout to test results and evidence:
+
+```bash
+task all
+```
+
+Or step by step:
+
 ```bash
 task setup            # .env with random lab secrets, Python venv
 task up               # Postgres, Vault, MCP server, gateway, collector, Jaeger
