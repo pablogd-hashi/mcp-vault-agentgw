@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 export VAULT_ADDR=http://127.0.0.1:8200
 
 APPROLE_TOKEN=$(vault write -field=token auth/approle/login \
-  role_id=@.lab/role_id secret_id=@.lab/secret_id)
+  role_id=@.lab/mcp-server/role_id secret_id=@.lab/mcp-server/secret_id)
 
 try() { # label, token, role
   if VAULT_TOKEN=$2 vault read -field=username "database/creds/$3" >/dev/null 2>/tmp/vault-check.err; then

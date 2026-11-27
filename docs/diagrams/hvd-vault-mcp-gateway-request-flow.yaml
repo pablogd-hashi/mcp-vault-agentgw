@@ -1,0 +1,41 @@
+# architecture.md "Request flow for one tool call". Badges are the steps of the numbered list.
+figure:
+  stem: hvd-vault-mcp-gateway-request-flow
+  title: "Figure 2: Request flow for one tool call"
+  alt: >-
+    The agent logs in to Vault with AppRole and gets an identity token (1), then sends tools/call to
+    agentgateway (2). Inside the gateway, jwtAuth checks the token against Vault's public keys (3),
+    mcpGuardrails checks the arguments (4), and mcpAuthorization checks the tool (5). The gateway forwards the
+    call to the MCP server with x-api-key (6). The MCP server checks the upstream key (7). The tool reads
+    database/creds from the Vault database secrets engine (8) and connects to Postgres as the leased user (9).
+  width: 1600
+  height: 520
+elements:
+  - header: {x: 40, w: 160, label: Agent}
+  - header: {x: 280, w: 540, label: Gateway}
+  - header: {x: 950, w: 340, label: MCP server}
+  - header: {x: 1360, w: 200, label: Database}
+  - container: {name: agentgateway, x: 290, y: 100, w: 520, h: 150, icon: gateway, label: agentgateway}
+  - container: {name: mcp-server, x: 960, y: 100, w: 320, h: 150, icon: plug, label: MCP server}
+  - container: {name: vault, x: 290, y: 330, w: 990, h: 150, icon: vault, label: Vault}
+  - conn: {name: approle-login, pts: [[110, 218], [110, 394], [356, 394]], label: AppRole login, at: [205, 380], label_anchor: middle, from: agent, to: identity-tokens}
+  - badge: {x: 110, y: 300, k: 1}
+  - conn: {name: tools-call, pts: [[134, 164], [356, 164]], label: tools/call, at: [190, 150], label_anchor: middle, mono: true, from: agent, to: jwt-auth}
+  - badge: {x: 255, y: 164, k: 2}
+  - conn: {name: public-keys, pts: [[380, 218], [380, 370]], label: public keys, at: [380, 292], label_dx: 12, from: jwt-auth, to: identity-tokens}
+  - conn: {name: to-guardrails, pts: [[404, 164], [526, 164]], from: jwt-auth, to: mcp-guardrails}
+  - conn: {name: to-authorization, pts: [[574, 164], [696, 164]], from: mcp-guardrails, to: mcp-authorization}
+  - conn: {name: forward, pts: [[744, 164], [1016, 164]], label: x-api-key, at: [900, 150], label_anchor: middle, mono: true, from: mcp-authorization, to: upstream-key}
+  - badge: {x: 840, y: 164, k: 6}
+  - conn: {name: to-tool, pts: [[1064, 164], [1166, 164]], from: upstream-key, to: tool}
+  - conn: {name: database-creds, pts: [[1190, 218], [1190, 370]], label: database/creds, at: [1190, 292], label_dx: 12, mono: true, from: tool, to: database-secrets}
+  - conn: {name: leased-user, pts: [[1214, 164], [1436, 164]], label: leased user, at: [1356, 150], label_anchor: middle, from: tool, to: postgres}
+  - tile: {name: agent, cx: 110, y: 140, icon: robot, caption: Agent}
+  - tile: {name: jwt-auth, cx: 380, y: 140, icon: key, caption: jwtAuth, badge: 3}
+  - tile: {name: mcp-guardrails, cx: 550, y: 140, icon: shield-check, caption: mcpGuardrails, badge: 4}
+  - tile: {name: mcp-authorization, cx: 720, y: 140, icon: shield-check, caption: mcpAuthorization, badge: 5}
+  - tile: {name: upstream-key, cx: 1040, y: 140, icon: key, caption: Upstream key, badge: 7}
+  - tile: {name: tool, cx: 1190, y: 140, icon: code, caption: Tool}
+  - tile: {name: identity-tokens, cx: 380, y: 370, icon: identity-user, caption: Identity tokens}
+  - tile: {name: database-secrets, cx: 1190, y: 370, icon: database, caption: Database secrets, badge: 8}
+  - tile: {name: postgres, cx: 1460, y: 140, icon: postgres, caption: Postgres, badge: 9}

@@ -30,7 +30,7 @@ async def test_prod_restart_is_denied_by_the_gateway(trace):
     assert len(denied) == 1
     assert "mcpGuardrails rejected" in denied[0]["error"]
     assert denied[0]["tool_args"] == {"env": "prod", "name": "payments"}
-    assert denied[0]["caller"] == "lab-agent"
+    assert denied[0]["caller"] == "oncall-agent"
 
     evidence.record(
         "test_2_prod_restart",

@@ -21,7 +21,7 @@ variable "postgres_root_password" {
 }
 
 variable "approle_dir" {
-  description = "Where the MCP server's AppRole credentials are written (mounted read-only into its container)."
+  description = "Where AppRole credentials are written: mcp-server/ for the MCP server, agents/<name>/ for each agent."
   type        = string
 }
 
@@ -104,13 +104,127 @@ resource "vault_approle_auth_backend_role_secret_id" "mcp_server" {
 }
 
 resource "local_sensitive_file" "role_id" {
-  filename        = "${var.approle_dir}/role_id"
+  filename        = "${var.approle_dir}/mcp-server/role_id"
   content         = vault_approle_auth_backend_role.mcp_server.role_id
   file_permission = "0644"
 }
 
 resource "local_sensitive_file" "secret_id" {
-  filename        = "${var.approle_dir}/secret_id"
+  filename        = "${var.approle_dir}/mcp-server/secret_id"
   content         = vault_approle_auth_backend_role_secret_id.mcp_server.secret_id
+  file_permission = "0644"
+}
+
+# ---------------------------------------------------------------------------
+# Agent identity
+#
+# Each agent is a Vault entity with its own AppRole. An agent logs in and asks
+# Vault for a signed, five-minute JWT whose audience is the gateway. The
+# gateway checks the signature against Vault's public keys and decides per
+# identity. An agent's Vault token can do nothing else: no database path is in
+# its policy.
+# ---------------------------------------------------------------------------
+
+locals {
+  agents = {
+    "oncall-agent" = { role = "operator" } # may read logs and restart services
+    "report-agent" = { role = "reader" }   # may read logs only
+  }
+}
+
+# The `iss` claim. The gateway reaches Vault by this name on the backend network.
+resource "vault_identity_oidc" "issuer" {
+  issuer = "http://vault:8200"
+}
+
+resource "vault_identity_oidc_key" "agents" {
+  name               = "agents"
+  algorithm          = "RS256"
+  allowed_client_ids = ["*"]
+  rotation_period    = 86400
+  verification_ttl   = 86400
+}
+
+# Tokens for the gateway. `client_id` becomes the `aud` claim.
+resource "vault_identity_oidc_role" "mcp_gateway" {
+  name      = "mcp-gateway"
+  key       = vault_identity_oidc_key.agents.name
+  client_id = "mcp-gateway"
+  ttl       = local.ttl
+  template  = <<-EOT
+    {"agent": {{identity.entity.name}}, "role": {{identity.entity.metadata.role}}}
+  EOT
+}
+
+# A token for some other service, signed by the same key. Test 7 uses it to
+# show that the gateway refuses a valid token that was issued for someone else.
+resource "vault_identity_oidc_role" "other_service" {
+  name      = "other-service"
+  key       = vault_identity_oidc_key.agents.name
+  client_id = "other-service"
+  ttl       = local.ttl
+  template  = <<-EOT
+    {"agent": {{identity.entity.name}}, "role": {{identity.entity.metadata.role}}}
+  EOT
+}
+
+resource "vault_policy" "agent" {
+  name   = "agent"
+  policy = <<-EOT
+    path "identity/oidc/token/mcp-gateway" {
+      capabilities = ["read"]
+    }
+    path "identity/oidc/token/other-service" {
+      capabilities = ["read"]
+    }
+  EOT
+}
+
+resource "vault_approle_auth_backend_role" "agent" {
+  for_each = local.agents
+
+  backend        = vault_auth_backend.approle.path
+  role_name      = each.key
+  token_policies = [vault_policy.agent.name]
+  token_ttl      = 600
+  token_max_ttl  = 1800
+}
+
+resource "vault_approle_auth_backend_role_secret_id" "agent" {
+  for_each = local.agents
+
+  backend   = vault_auth_backend.approle.path
+  role_name = vault_approle_auth_backend_role.agent[each.key].role_name
+}
+
+resource "vault_identity_entity" "agent" {
+  for_each = local.agents
+
+  name     = each.key
+  metadata = { role = each.value.role }
+}
+
+# Ties the AppRole login to the entity, so the token Vault signs names this agent.
+resource "vault_identity_entity_alias" "agent" {
+  for_each = local.agents
+
+  name           = vault_approle_auth_backend_role.agent[each.key].role_id
+  mount_accessor = vault_auth_backend.approle.accessor
+  canonical_id   = vault_identity_entity.agent[each.key].id
+}
+
+resource "local_sensitive_file" "agent_role_id" {
+  for_each = local.agents
+
+  filename        = "${var.approle_dir}/agents/${each.key}/role_id"
+  content         = vault_approle_auth_backend_role.agent[each.key].role_id
+  file_permission = "0644"
+}
+
+resource "local_sensitive_file" "agent_secret_id" {
+  for_each = local.agents
+
+  filename        = "${var.approle_dir}/agents/${each.key}/secret_id"
+  content         = vault_approle_auth_backend_role_secret_id.agent[each.key].secret_id
   file_permission = "0644"
 }

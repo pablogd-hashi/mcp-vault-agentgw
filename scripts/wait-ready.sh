@@ -1,5 +1,5 @@
 #!/bin/sh
-# Wait until the gateway answers (401 without a key means it is up and enforcing).
+# Wait until the gateway answers (401 without a token means it is up and enforcing).
 i=0
 while [ $i -lt 60 ]; do
   code=$(curl -s -o /dev/null -m 2 -w '%{http_code}' -X POST http://127.0.0.1:13000/mcp || true)

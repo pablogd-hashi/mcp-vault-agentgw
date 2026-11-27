@@ -12,7 +12,7 @@ tasks:
     silent: true
 
   all:
-    desc: "Everything end to end: setup, start, configure Vault, run the six tests, then show the evidence."
+    desc: "Everything end to end: setup, start, configure Vault, run the seven tests, then show the evidence."
     cmds:
       - task: setup
       - task: up
@@ -32,13 +32,13 @@ tasks:
   up:
     desc: Start Postgres, Vault, the MCP server, the gateway, the collector and Jaeger.
     cmds:
-      - mkdir -p .lab
+      - mkdir -p .lab/mcp-server .lab/agents/oncall-agent .lab/agents/report-agent
       - docker compose up -d --build --wait postgres vault
       - docker compose up -d --build
       - sh scripts/wait-ready.sh
 
   vault:configure:
-    desc: Configure Vault with Terraform (database engine, roles, AppRole) and hand the AppRole to the MCP server.
+    desc: Configure Vault with Terraform (database engine, roles, AppRoles, agent identities) and hand out the AppRole files.
     dir: terraform/vault
     env:
       VAULT_ADDR: http://127.0.0.1:8200
@@ -48,6 +48,19 @@ tasks:
     cmds:
       - terraform init -input=false -upgrade=false
       - terraform apply -input=false -auto-approve
+      # The gateway reads Vault's signing keys when it starts, so it has to start after they exist.
+      - task: gateway:reload
+
+  gateway:reload:
+    desc: Restart the gateway so it loads its policy file and Vault's current signing keys.
+    cmds:
+      - docker compose restart agentgateway
+      - sh scripts/wait-ready.sh
+
+  identity:
+    desc: Show the claims in the token Vault issues to an agent (AGENT=oncall-agent by default).
+    cmds:
+      - "{{.PY}} -m lab.identity {{.AGENT | default \"oncall-agent\"}} --claims"
 
   vault:check:
     desc: Show what the MCP server's AppRole can and cannot lease, straight from Vault.
@@ -70,12 +83,12 @@ tasks:
       - '{{.PSQL}} -c "DELETE FROM dev.logs WHERE message LIKE ''%OPERATOR NOTE%''; UPDATE dev.services SET restarts = 0, last_restart = NULL; UPDATE prod.services SET restarts = 0, last_restart = NULL;"'
 
   test:
-    desc: Run the six scenarios (deterministic, no model needed).
+    desc: Run the seven scenarios (deterministic, no model needed).
     cmds:
       - "{{.PY}} -m pytest tests/ -v {{.CLI_ARGS}}"
 
   demo:
-    desc: Run the live agent on a clean log (needs Ollama on the host).
+    desc: Run the live agent on a clean log (needs Ollama on the host). AGENT_NAME=report-agent runs it as the read-only identity.
     cmds:
       - docker compose run --rm --build agent python -m agent.run "Read the dev logs and tell me which service has errors."
 
@@ -92,7 +105,7 @@ tasks:
     desc: Compare read_logs latency straight to the MCP server and through the gateway.
     cmds:
       - mkdir -p results
-      - docker compose exec -T -e AGENT_KEY={{.AGENT_KEY}} mcp-server python - < scripts/bench.py | tee results/bench.json
+      - docker compose exec -T -e AGENT_TOKEN="$({{.PY}} -m lab.identity)" mcp-server python - < scripts/bench.py | tee results/bench.json
 
   audit:
     desc: Print the gateway's record of recent tool calls (who, tool, arguments, verdict).

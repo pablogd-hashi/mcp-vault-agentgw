@@ -1,0 +1,37 @@
+# architecture.md "Component layout": where each component runs and the networks it joins.
+# A tile inside two or three network boundaries is a service that joins each of them.
+figure:
+  stem: hvd-vault-mcp-gateway-component-layout
+  title: "Figure 1: Component layout of the lab"
+  alt: >-
+    The host runs Ollama on 127.0.0.1:11434 and the test clients. Docker Compose runs the other components on
+    three networks. The agent joins agent-net only. The MCP server and Postgres join backend-net only. Jaeger
+    joins telemetry-net only and is published on 127.0.0.1:16686. agentgateway, published on 127.0.0.1:13000,
+    and Vault, published on 127.0.0.1:8200, join both agent-net and backend-net. The collector joins all three
+    networks. The agent reaches the gateway, reaches Vault for an identity token, and reaches Ollama through
+    host.docker.internal. The gateway reaches the MCP server with x-api-key. The MCP server reads database/creds
+    from Vault and connects to Postgres. The collector sends spans to Jaeger.
+  width: 1600
+  height: 640
+elements:
+  - header: {x: 40, w: 220, label: Host}
+  - header: {x: 340, w: 1220, label: Docker Compose}
+  - boundary: {name: agent-net, x: 360, y: 120, w: 465, h: 460, label: agent-net}
+  - boundary: {name: backend-net, x: 640, y: 100, w: 600, h: 460, label: backend-net}
+  - boundary: {name: telemetry-net, x: 660, y: 430, w: 860, h: 170, label: telemetry-net}
+  - conn: {name: model, pts: [[476, 194], [154, 194]], label: host.docker.internal, at: [258, 180], label_anchor: middle, mono: true, from: agent, to: ollama}
+  - conn: {name: tool-calls, pts: [[524, 194], [721, 194]], from: agent, to: agentgateway}
+  - conn: {name: identity-token, pts: [[500, 248], [500, 334], [721, 334]], label: identity token, at: [590, 320], label_anchor: middle, from: agent, to: vault}
+  - conn: {name: upstream, pts: [[769, 194], [936, 194]], label: x-api-key, at: [884, 180], label_anchor: middle, mono: true, from: agentgateway, to: mcp-server}
+  - conn: {name: database-creds, pts: [[960, 248], [960, 334], [769, 334]], label: database/creds, at: [892, 320], label_anchor: middle, mono: true, from: mcp-server, to: vault}
+  - conn: {name: sql, pts: [[984, 194], [1116, 194]], from: mcp-server, to: postgres}
+  - conn: {name: spans, pts: [[769, 484], [1366, 484]], label: spans, at: [1300, 470], label_anchor: middle, from: collector, to: jaeger}
+  - tile: {name: ollama, cx: 130, y: 170, icon: cpu, caption: [Ollama, "127.0.0.1:11434"]}
+  - tile: {name: test-clients, cx: 130, y: 330, icon: terminal-screen, caption: Test clients}
+  - tile: {name: agent, cx: 500, y: 170, icon: robot, caption: Agent}
+  - tile: {name: agentgateway, cx: 745, y: 170, icon: gateway, caption: [agentgateway, "127.0.0.1:13000"]}
+  - tile: {name: vault, cx: 745, y: 310, icon: vault, caption: [Vault, "127.0.0.1:8200"]}
+  - tile: {name: collector, cx: 745, y: 460, icon: network, caption: Collector}
+  - tile: {name: mcp-server, cx: 960, y: 170, icon: plug, caption: MCP server}
+  - tile: {name: postgres, cx: 1140, y: 170, icon: postgres, caption: Postgres}
+  - tile: {name: jaeger, cx: 1390, y: 460, icon: eye, caption: [Jaeger, "127.0.0.1:16686"]}

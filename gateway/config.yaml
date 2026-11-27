@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=https://agentgateway.dev/schema/config
 #
 # The whole gateway policy for the lab. Three things happen here:
-#   1. the caller must present the agent key (who is calling),
-#   2. each tool call is checked against the rules below (what it may do),
+#   1. the caller must present a short-lived JWT that Vault signed (who is calling),
+#   2. each tool call is checked against the rules below (what this caller may do),
 #   3. the upstream key is added on the way to the MCP server (the agent never sees it).
 
 config:
@@ -18,25 +18,33 @@ frontendPolicies:
     add:
       tool_args: 'mcp.tool.arguments'
       tool_error: 'mcp.tool.error'
-      caller: 'apiKey.user'
+      caller: 'jwt.agent'
+      caller_role: 'jwt.role'
+      caller_sub: 'jwt.sub'
 
 mcp:
   port: 3000
   policies:
-    apiKey:
+    # Who is calling. The token is an identity token from Vault: signed with
+    # Vault's key, issued for this gateway (aud), valid for five minutes. The
+    # gateway holds no secret for this check, only Vault's public keys.
+    jwtAuth:
       mode: strict
-      keys:
-      - key: $AGENT_KEY
-        metadata:
-          user: lab-agent
+      issuer: http://vault:8200/v1/identity/oidc
+      audiences: [mcp-gateway]
+      jwks:
+        url: http://vault:8200/v1/identity/oidc/.well-known/keys
+      jwtValidationOptions:
+        requiredClaims: [exp, sub]
 
-    # Which tools exist for this caller. read_logs is allowed for every
-    # environment on purpose: a gateway rule that is too broad is the mistake
-    # test 3 relies on.
+    # Which tools exist for this caller. Any authenticated agent may read
+    # logs; only an agent whose Vault entity has role=operator may restart.
+    # read_logs is allowed for every environment on purpose: a gateway rule
+    # that is too broad is the mistake test 3 relies on.
     mcpAuthorization:
       rules:
       - 'mcp.tool.name == "read_logs"'
-      - 'mcp.tool.name == "restart_service"'
+      - 'mcp.tool.name == "restart_service" && jwt.role == "operator"'
 
     # Rules on tool ARGUMENTS. mcpAuthorization cannot see arguments, so the
     # prod restart rule is a request-phase guardrail.

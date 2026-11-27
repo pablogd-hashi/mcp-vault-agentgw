@@ -1,0 +1,39 @@
+# README figure: the three controls and where each test scenario stops.
+# Badges are the scenario numbers in the README "Test scenarios" table.
+figure:
+  stem: hvd-vault-mcp-gateway-controls
+  title: "Figure 1: The three controls and where each test scenario stops"
+  alt: >-
+    Three columns, one for each decision. In the first column, the agent logs in to Vault with AppRole and gets
+    a five-minute JWT from Vault identity tokens. In the second column, the agent presents the JWT to
+    agentgateway, which runs its token check, its tool rules, and its argument rule. In the third column, inside
+    the backend network, the gateway reaches the MCP server with the upstream key, and the MCP server leases
+    five-minute credentials from Vault and connects to Postgres as the leased user. Numbered badges mark where
+    each test scenario stops: 1 at Postgres, 2 and 4 at the argument rule, 3 at the Vault database credentials,
+    5 at the backend network and the MCP server, 6 at the gateway, and 7 at the token check and the tool rules.
+  width: 1600
+  height: 440
+elements:
+  - header: {x: 40, w: 300, label: Which agent is calling}
+  - header: {x: 380, w: 460, label: Whether the call runs}
+  - header: {x: 920, w: 640, label: What the tool can reach}
+  - container: {name: agentgateway, x: 400, y: 100, w: 420, h: 140, icon: gateway, label: agentgateway}
+  - boundary: {name: backend-network, x: 940, y: 90, w: 620, h: 320, label: Backend network}
+  - conn: {name: approle-login, pts: [[110, 208], [110, 290]], label: AppRole login, at: [110, 249], label_dx: 12, from: agent, to: identity-tokens}
+  - conn: {name: jwt, pts: [[134, 154], [446, 154]], label: five-minute JWT, at: [265, 140], label_anchor: middle, from: agent, to: token-check}
+  - conn: {name: to-tool-rules, pts: [[494, 154], [586, 154]], from: token-check, to: tool-rules}
+  - conn: {name: to-argument-rule, pts: [[634, 154], [726, 154]], from: tool-rules, to: argument-rule}
+  - conn: {name: upstream-key, pts: [[774, 154], [986, 154]], label: upstream key, at: [880, 140], label_anchor: middle, from: argument-rule, to: mcp-server}
+  - conn: {name: lease, pts: [[1034, 154], [1226, 154]], label: five-minute credentials, at: [1130, 140], label_anchor: middle, from: mcp-server, to: database-credentials}
+  - conn: {name: leased-user, pts: [[1010, 208], [1010, 314], [1436, 314]], label: leased user, at: [1225, 300], label_anchor: middle, from: mcp-server, to: postgres}
+  - tile: {name: agent, cx: 110, y: 130, icon: robot, caption: Agent}
+  - tile: {name: identity-tokens, cx: 110, y: 290, icon: vault, caption: [Identity, tokens]}
+  - tile: {name: token-check, cx: 470, y: 130, icon: key, caption: Token check, badge: 7}
+  - tile: {name: tool-rules, cx: 610, y: 130, icon: shield-check, caption: Tool rules, badge: 7}
+  - tile: {name: argument-rule, cx: 750, y: 130, icon: shield-check, caption: Argument rule, badge: 2}
+  - badge: {x: 799, y: 130, k: 4}
+  - badge: {x: 820, y: 100, k: 6}
+  - badge: {x: 940, y: 154, k: 5}
+  - tile: {name: mcp-server, cx: 1010, y: 130, icon: plug, caption: MCP server, badge: 5}
+  - tile: {name: database-credentials, cx: 1250, y: 130, icon: vault, caption: [Database, credentials], badge: 3}
+  - tile: {name: postgres, cx: 1460, y: 290, icon: postgres, caption: Postgres, badge: 1}

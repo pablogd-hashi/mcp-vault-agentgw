@@ -1,7 +1,7 @@
 """Small MCP client helpers shared by the tests and the scripts.
 
 Everything goes through the gateway exactly as the agent's calls do: streamable
-HTTP, with the agent key as a bearer token.
+HTTP, with a Vault-issued identity token as the bearer token.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
+from lab.identity import agent_jwt
+
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://127.0.0.1:13000/mcp")
 
 
@@ -26,12 +28,21 @@ class ToolOutcome:
 
 
 @asynccontextmanager
-async def session(url: str = GATEWAY_URL, key: str | None = None, headers: dict | None = None):
-    """Open an initialised MCP session. `key` defaults to AGENT_KEY from the environment."""
+async def session(
+    url: str = GATEWAY_URL,
+    token: str | None = None,
+    headers: dict | None = None,
+    agent: str = "oncall-agent",
+):
+    """Open an initialised MCP session as `agent`.
+
+    A fresh identity token is fetched from Vault unless `token` is given.
+    Pass `token=""` to send no credential at all.
+    """
     hdrs = dict(headers or {})
-    key = os.environ.get("AGENT_KEY") if key is None else key
-    if key:
-        hdrs["Authorization"] = f"Bearer {key}"
+    token = agent_jwt(agent) if token is None else token
+    if token:
+        hdrs["Authorization"] = f"Bearer {token}"
     async with httpx.AsyncClient(headers=hdrs, timeout=httpx.Timeout(30, read=120)) as http:
         async with streamable_http_client(url, http_client=http) as (read, write, _):
             async with ClientSession(read, write) as s:

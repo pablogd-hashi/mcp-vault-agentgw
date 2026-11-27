@@ -37,7 +37,7 @@ async def measure(url: str, headers: dict) -> dict:
 
 async def main():
     direct = await measure("http://localhost:8000/mcp", {"x-api-key": os.environ["UPSTREAM_KEY"]})
-    gateway = await measure("http://agentgateway:3000/mcp", {"Authorization": f"Bearer {os.environ['AGENT_KEY']}"})
+    gateway = await measure("http://agentgateway:3000/mcp", {"Authorization": f"Bearer {os.environ['AGENT_TOKEN']}"})
     print(
         json.dumps(
             {

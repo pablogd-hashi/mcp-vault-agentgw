@@ -25,7 +25,7 @@ async def test_dev_read_is_allowed(trace):
 
     logged = evidence.tool_calls_in_log(trace_id)
     assert len(logged) == 1 and "error" not in logged[0]
-    assert logged[0]["caller"] == "lab-agent"
+    assert logged[0]["caller"] == "oncall-agent"
 
     evidence.record(
         "test_1_allowed",

@@ -1,6 +1,6 @@
 # Three networks, so "the agent cannot reach the MCP server" is a fact about the
 # lab and not a promise:
-#   agent-net     agent <-> gateway
+#   agent-net     agent <-> gateway, vault (identity tokens only)
 #   backend-net   gateway <-> mcp-server <-> vault, postgres
 #   telemetry-net collector <-> jaeger
 # The collector is the only service on all three. A shared telemetry network
@@ -36,7 +36,9 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
-    networks: [backend-net]
+    # On agent-net as well: Vault is the identity provider, so agents must be
+    # able to log in to it. Their policy allows an identity token and nothing else.
+    networks: [backend-net, agent-net]
 
   mcp-server:
     build: ./mcp-server
@@ -46,7 +48,7 @@ services:
       APPROLE_DIR: /run/lab
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     volumes:
-      - ./.lab:/run/lab:ro
+      - ./.lab/mcp-server:/run/lab:ro
     depends_on:
       postgres: {condition: service_healthy}
       vault: {condition: service_healthy}
@@ -56,14 +58,16 @@ services:
     image: cr.agentgateway.dev/agentgateway:v1.7.0
     command: ["-f", "/config.yaml"]
     environment:
-      AGENT_KEY: ${AGENT_KEY}
       UPSTREAM_KEY: ${UPSTREAM_KEY}
       SESSION_KEY: ${SESSION_KEY}
     volumes:
       - ./gateway/config.yaml:/config.yaml:ro
     ports:
       - "127.0.0.1:13000:3000"
-    depends_on: [mcp-server, otel-collector]
+    depends_on:
+      mcp-server: {condition: service_started}
+      otel-collector: {condition: service_started}
+      vault: {condition: service_healthy}
     networks: [agent-net, backend-net]
 
   otel-collector:
@@ -89,10 +93,16 @@ services:
     profiles: [agent]
     environment:
       GATEWAY_URL: http://agentgateway:3000/mcp
-      AGENT_KEY: ${AGENT_KEY}
+      # The agent's only secret is its own AppRole. It trades it at Vault for a
+      # five-minute JWT and presents that to the gateway.
+      LAB_VAULT_ADDR: http://vault:8200
+      AGENT_NAME: ${AGENT_NAME:-oncall-agent}
+      AGENT_CREDS_DIR: /run/agent
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    volumes:
+      - ./.lab/agents/${AGENT_NAME:-oncall-agent}:/run/agent:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks: [agent-net]

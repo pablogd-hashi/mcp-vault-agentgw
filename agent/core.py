@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from opentelemetry import propagate
 from smolagents import LiteLLMModel, MCPClient, ToolCallingAgent
 
+from lab.identity import DEFAULT_AGENT, agent_jwt, claims
 from lab.telemetry import flush, init_telemetry
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://agentgateway:3000/mcp")
@@ -55,9 +56,12 @@ def run_agent(task: str, max_steps: int = 6) -> RunReport:
         root.set_attribute("agent.task", task)
         trace_id = format(root.get_span_context().trace_id, "032x")
 
-        # The agent's only credential is its own key for the gateway. The trace
-        # context rides along so gateway, server and Vault spans join this trace.
-        headers = {"Authorization": f"Bearer {os.environ['AGENT_KEY']}"}
+        # The agent's only secret is its AppRole. It trades that at Vault for a
+        # five-minute identity token and presents the token to the gateway. The
+        # trace context rides along so gateway, server and Vault spans join this trace.
+        token = agent_jwt(DEFAULT_AGENT)
+        root.set_attribute("agent.identity", claims(token)["agent"])
+        headers = {"Authorization": f"Bearer {token}"}
         propagate.inject(headers)
 
         with MCPClient(
